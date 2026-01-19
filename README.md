@@ -20,6 +20,23 @@ python run.py ui
 
 `run.py` asks whether to create a local `.venv` or use your current environment, then installs any missing dependencies before launching.
 
+## Workflow (custom data)
+
+1) Open the UI and upload your dataset (CSV or Excel).  
+2) Map your columns to the canonical feature names.  
+3) Train and evaluate. Artifacts are saved to `models/` and `reports/`.  
+4) Score new data and run drift checks from the UI.
+
+## Synthetic data generator
+
+Generate a large synthetic dataset (CSV, Excel, or both):
+
+```bash
+python -m predictive_maintenance.scripts_generate_synthetic --format both --n-units 2000 --cycles 1000
+```
+
+Excel output is automatically split into multiple files if it exceeds Excel's row limit.
+
 ## Notes
 
 - The UI calls the API at `http://127.0.0.1:8000` by default.

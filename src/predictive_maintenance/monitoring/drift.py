@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from predictive_maintenance.feature_config import load_feature_config
 from predictive_maintenance.features import build_rolling_features
 
 
@@ -115,10 +116,30 @@ def compute_drift(
 ) -> dict[str, Any]:
     baseline = load_baseline_bins()
     stats = load_baseline_stats()
+    feature_cfg = load_feature_config(project_root() / "models" / "feature_config.json")
+    if feature_cfg is not None:
+        id_col = feature_cfg.id_col
+        time_col = feature_cfg.time_col
+        signal_cols = feature_cfg.signal_cols
+    else:
+        id_col = "unit_id"
+        time_col = "cycle"
+        signal_cols = None
 
     # Build features, align to scoring behavior (latest cycle per unit)
-    feat = build_rolling_features(raw_rows, window=window, min_periods=min_periods)
-    latest = feat.sort_values(["unit_id", "cycle"]).groupby("unit_id", as_index=False).tail(1)
+    feat = build_rolling_features(
+        raw_rows,
+        window=window,
+        min_periods=min_periods,
+        signal_cols=signal_cols,
+        id_col=id_col,
+        time_col=time_col,
+    )
+    latest = (
+        feat.sort_values([id_col, time_col])
+        .groupby(id_col, as_index=False)
+        .tail(1)
+    )
 
     drift_rows: list[dict[str, Any]] = []
 

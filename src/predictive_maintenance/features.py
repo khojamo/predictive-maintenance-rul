@@ -10,6 +10,9 @@ def build_rolling_features(
     df: pd.DataFrame,
     window: int,
     min_periods: int = 1,
+    signal_cols: list[str] | None = None,
+    id_col: str = "unit_id",
+    time_col: str = "cycle",
 ) -> pd.DataFrame:
     """
     Build rolling-window features per unit_id using ONLY past/current cycles.
@@ -28,18 +31,21 @@ def build_rolling_features(
     if min_periods < 1:
         raise ValueError("min_periods must be >= 1")
 
+    if signal_cols is None:
+        signal_cols = OP_COLS + SENSOR_COLS
+
     # Ensure correct order (important for rolling windows)
-    out = df.sort_values(["unit_id", "cycle"]).copy()
+    out = df.sort_values([id_col, time_col]).copy()
 
     # Keep only needed columns (traceable)
-    keep = ["unit_id", "cycle"] + OP_COLS + SENSOR_COLS
+    keep = [id_col, time_col] + signal_cols
     out = out[keep]
 
-    g = out.groupby("unit_id", group_keys=False)
+    g = out.groupby(id_col, group_keys=False)
 
     feats = []
     # Rolling stats + current value for each signal
-    for col in OP_COLS + SENSOR_COLS:
+    for col in signal_cols:
         r = g[col].rolling(window=window, min_periods=min_periods)
 
         feats.append(r.mean().reset_index(level=0, drop=True).rename(f"{col}_roll{window}_mean"))
@@ -52,15 +58,15 @@ def build_rolling_features(
     feat_df = pd.concat(feats, axis=1)
 
     # Attach identifiers for merging with labels later
-    feat_df.insert(0, "cycle", out["cycle"].to_numpy())
-    feat_df.insert(0, "unit_id", out["unit_id"].to_numpy())
+    feat_df.insert(0, time_col, out[time_col].to_numpy())
+    feat_df.insert(0, id_col, out[id_col].to_numpy())
 
     # --- NaN handling (leakage-safe) ---
     # With min_periods > 1, early cycles per unit have NaNs for rolling stats.
     # We impute using only current info:
     # - roll mean/min/max -> current value (*_last)
     # - roll std          -> 0.0
-    for col in OP_COLS + SENSOR_COLS:
+    for col in signal_cols:
         last = f"{col}_last"
 
         mean_c = f"{col}_roll{window}_mean"

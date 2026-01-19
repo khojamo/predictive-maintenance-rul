@@ -20,6 +20,7 @@ venv/
 # Project outputs (keep repo clean)
 data/raw/
 data/derived/
+data/generated/
 models/
 logs/
 reports/figures/

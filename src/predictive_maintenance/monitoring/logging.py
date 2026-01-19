@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from predictive_maintenance.feature_config import load_feature_config
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -35,8 +36,12 @@ def log_prediction_event(*, endpoint: str, request_id: str, raw_rows: list[dict]
     path = root / "logs" / "predictions.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    unit_ids = [r.get("unit_id") for r in raw_rows if "unit_id" in r]
-    cycles = [r.get("cycle") for r in raw_rows if "cycle" in r]
+    cfg = load_feature_config(root / "models" / "feature_config.json")
+    id_col = cfg.id_col if cfg is not None else "unit_id"
+    time_col = cfg.time_col if cfg is not None else "cycle"
+
+    unit_ids = [r.get(id_col) for r in raw_rows if id_col in r]
+    cycles = [r.get(time_col) for r in raw_rows if time_col in r]
     risk_probs = [o.get("risk_proba") for o in outputs if "risk_proba" in o]
     rul_preds = [o.get("rul_pred") for o in outputs if "rul_pred" in o]
 

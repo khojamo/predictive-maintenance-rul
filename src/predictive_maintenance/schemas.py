@@ -2,37 +2,8 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
-class CMAPSSRow(BaseModel):
-    unit_id: int
-    cycle: int
-    op_1: float
-    op_2: float
-    op_3: float
-    s_1: float
-    s_2: float
-    s_3: float
-    s_4: float
-    s_5: float
-    s_6: float
-    s_7: float
-    s_8: float
-    s_9: float
-    s_10: float
-    s_11: float
-    s_12: float
-    s_13: float
-    s_14: float
-    s_15: float
-    s_16: float
-    s_17: float
-    s_18: float
-    s_19: float
-    s_20: float
-    s_21: float
-
-
 class PredictRequest(BaseModel):
-    rows: list[CMAPSSRow]
+    rows: list[dict[str, float | int]]
     window: int | None = Field(None, description="Override rolling window (optional)")
     min_periods: int | None = Field(None, description="Override rolling min_periods (optional)")
 

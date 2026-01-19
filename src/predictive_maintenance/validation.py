@@ -8,6 +8,8 @@ no-op (useful for minimal environments / CI smoke tests).
 
 from typing import Any
 
+import pandas as pd
+
 try:
     import pandera.pandas as pa
     from pandera import Check
@@ -50,3 +52,30 @@ def validate_cmapss(df):
     if schema is None:  # pandera missing
         return df
     return schema.validate(df, lazy=True)
+
+
+def validate_timeseries(
+    df,
+    *,
+    id_col: str,
+    time_col: str,
+    feature_cols: list[str],
+):
+    """Lightweight validation for custom time-series datasets."""
+    missing = [c for c in [id_col, time_col, *feature_cols] if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    out = df.copy()
+    out[id_col] = out[id_col].astype(int)
+    out[time_col] = pd.to_numeric(out[time_col], errors="coerce")
+    if out[time_col].isna().any():
+        raise ValueError(f"Time column '{time_col}' contains non-numeric values.")
+
+    for col in feature_cols:
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    if out[[id_col, time_col]].isna().any().any():
+        raise ValueError("Found missing values in id/time columns after coercion.")
+
+    return out
