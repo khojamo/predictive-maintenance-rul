@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.dist-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Envs
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Project outputs (keep repo clean)
+data/raw/
+data/derived/
+models/
+logs/
+reports/figures/
+reports/*.json
+reports/*.md
+
+# OS
+.DS_Store

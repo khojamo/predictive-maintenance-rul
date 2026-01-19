@@ -1,0 +1,5 @@
+calibration:
+  cv: 3
+  method: isotonic
+risk_threshold: 0.3
+threshold_selection: max_f1_on_validation

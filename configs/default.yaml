@@ -1,0 +1,16 @@
+dataset: FD001
+risk_horizon: 30
+
+split:
+  train: 0.70
+  valid: 0.15
+  test: 0.15
+  seed: 42
+
+features:
+  window: 20
+  min_periods: 5
+
+monitoring:
+  psi_bins: 10
+  psi_threshold: 0.20
