@@ -11,18 +11,30 @@ from predictive_maintenance.schemas import (
 )
 
 
-def _score(req_rows: list[dict], window: int | None, min_periods: int | None) -> list[PredictResponse]:
+def _score(
+    req_rows: list[dict],
+    window: int | None,
+    min_periods: int | None,
+    all_cycles: bool,
+    clamp_rul: bool,
+) -> list[PredictResponse]:
     df = pd.DataFrame(req_rows)
-    scored = score_latest_cycles(df, window=window, min_periods=min_periods)
+    scored = score_latest_cycles(
+        df,
+        window=window,
+        min_periods=min_periods,
+        all_cycles=all_cycles,
+        clamp_rul=clamp_rul,
+    )
     return [PredictResponse(**row) for row in scored.to_dict(orient="records")]
 
 
 def predict_one(req: PredictRequest) -> list[PredictResponse]:
-    rows = [r.model_dump() for r in req.rows]
-    return _score(rows, req.window, req.min_periods)
+    rows = list(req.rows)
+    return _score(rows, req.window, req.min_periods, req.all_cycles, req.clamp_rul)
 
 
 def predict_many(req: BatchPredictRequest) -> BatchPredictResponse:
-    rows = [r.model_dump() for r in req.rows]
-    preds = _score(rows, req.window, req.min_periods)
+    rows = list(req.rows)
+    preds = _score(rows, req.window, req.min_periods, req.all_cycles, req.clamp_rul)
     return BatchPredictResponse(outputs=preds)

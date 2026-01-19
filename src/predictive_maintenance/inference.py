@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import joblib
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -84,6 +85,8 @@ def score_latest_cycles(
     raw: pd.DataFrame,
     window: int | None = None,
     min_periods: int | None = None,
+    all_cycles: bool = False,
+    clamp_rul: bool = True,
 ) -> pd.DataFrame:
     """
     Input: raw CMAPSS-like rows with:
@@ -107,12 +110,15 @@ def score_latest_cycles(
         time_col=a.time_col,
     )
 
-    latest = (
-        feats.sort_values([a.id_col, a.time_col])
-        .groupby(a.id_col, as_index=False)
-        .tail(1)
-        .reset_index(drop=True)
-    )
+    if all_cycles:
+        latest = feats.sort_values([a.id_col, a.time_col]).reset_index(drop=True)
+    else:
+        latest = (
+            feats.sort_values([a.id_col, a.time_col])
+            .groupby(a.id_col, as_index=False)
+            .tail(1)
+            .reset_index(drop=True)
+        )
 
     X = latest.drop(columns=[a.id_col, a.time_col])
 
@@ -120,6 +126,8 @@ def score_latest_cycles(
     risk_proba = risk_proba.clip(1e-6, 1 - 1e-6)
     risk_label = (risk_proba >= a.risk_threshold).astype(int)
     rul_pred = a.rul_model.predict(X)
+    if clamp_rul:
+        rul_pred = np.maximum(rul_pred, 0.0)
 
     out = latest[[a.id_col, a.time_col]].copy()
     out["risk_proba"] = risk_proba.astype(float)

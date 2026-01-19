@@ -6,6 +6,8 @@ class PredictRequest(BaseModel):
     rows: list[dict[str, float | int]]
     window: int | None = Field(None, description="Override rolling window (optional)")
     min_periods: int | None = Field(None, description="Override rolling min_periods (optional)")
+    all_cycles: bool = Field(False, description="If true, score every cycle (not just latest).")
+    clamp_rul: bool = Field(True, description="Clamp negative RUL predictions to 0.")
 
 
 class PredictResponse(BaseModel):

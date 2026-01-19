@@ -63,7 +63,7 @@ def predict(req: PredictRequest) -> list[PredictResponse]:
 
     # Best-effort logging: NEVER break predictions
     try:
-        raw_rows = [r.model_dump() for r in req.rows]
+        raw_rows = list(req.rows)
         log_prediction_event(
             endpoint="/predict",
             request_id=request_id,
@@ -84,7 +84,7 @@ def batch_predict(req: BatchPredictRequest) -> BatchPredictResponse:
     resp = predict_many(req)  # returns BatchPredictResponse(outputs=[...])
 
     try:
-        raw_rows = [r.model_dump() for r in req.rows]
+        raw_rows = list(req.rows)
         log_prediction_event(
             endpoint="/batch_predict",
             request_id=request_id,
@@ -108,7 +108,7 @@ def drift(req: DriftRequest) -> DriftResponse:
     min_periods = int(req.min_periods) if req.min_periods is not None else int(a.min_periods)
     psi_threshold = float(req.psi_threshold) if req.psi_threshold is not None else float(mon.get("psi_threshold", 0.20))
 
-    rows_df = pd.DataFrame([r.model_dump() for r in req.rows])
+    rows_df = pd.DataFrame(list(req.rows))
 
     try:
         result = compute_drift(

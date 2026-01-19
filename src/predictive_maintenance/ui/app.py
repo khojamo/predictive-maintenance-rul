@@ -362,6 +362,8 @@ with tab_score:
             fail_col = None
             failure_cycle_col = None
 
+        score_all = st.checkbox("Score all cycles (not just latest)", value=False, key="score_all")
+
         if st.button("Score data", type="primary", disabled=not models_ready):
             prepared, _ = _prepare_df(
                 score_df,
@@ -374,8 +376,47 @@ with tab_score:
                 time_is_timestamp=time_is_timestamp,
                 missing_strategy="median",
             )
-            scored = score_latest_cycles(prepared)
-            st.success(f"Scored {len(scored)} units.")
+            scored = score_latest_cycles(prepared, all_cycles=score_all, clamp_rul=True)
+
+            artifacts = load_artifacts()
+            id_col_out = artifacts.id_col
+            time_col_out = artifacts.time_col
+
+            n_rows = len(scored)
+            n_units = scored[id_col_out].nunique() if id_col_out in scored else 0
+            alert_rate = float(scored["risk_label"].mean()) if n_rows else 0.0
+            median_rul = float(scored["rul_pred"].median()) if n_rows else 0.0
+            min_rul = float(scored["rul_pred"].min()) if n_rows else 0.0
+
+            st.success(f"Scored {n_rows} rows across {n_units} units.")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Alert rate", f"{alert_rate:.1%}")
+            c2.metric("Median RUL", f"{median_rul:.1f}")
+            c3.metric("Min RUL", f"{min_rul:.1f}")
+
+            if score_all:
+                st.caption("Scoring mode: all cycles (one row per unit per cycle).")
+
+            alerts = scored[scored["risk_label"] == 1]
+            if len(alerts) == 0:
+                st.success("No alerts: all rows are below the risk threshold.")
+            else:
+                st.warning(f"{len(alerts)} alerts flagged. Review high-risk units first.")
+                by_unit = (
+                    alerts.groupby(id_col_out, as_index=False)
+                    .agg({"risk_proba": "max", "rul_pred": "min"})
+                    .sort_values(["risk_proba", "rul_pred"], ascending=[False, True])
+                    .head(10)
+                )
+                st.caption("Top 10 units by risk (max risk_proba, min RUL):")
+                st.dataframe(by_unit, use_container_width=True)
+
+            st.markdown(
+                "- `risk_proba` = probability of failure within the horizon.\n"
+                "- `risk_label` = alert if above threshold.\n"
+                "- `rul_pred` = estimated remaining useful life (clamped to >= 0).\n"
+            )
+
             st.dataframe(scored.head(50), use_container_width=True)
 
             st.download_button(
