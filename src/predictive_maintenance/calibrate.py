@@ -22,7 +22,9 @@ def calibrate_model(
     y_valid,
     out_dir: Path,
     cv: int = 3,
-) -> tuple[CalibratedClassifierCV, float, float]:
+    threshold_strategy: str = "max_f1",
+    target_value: float = 0.8,
+) -> tuple[CalibratedClassifierCV, float, float, float]:
     """
     Calibrate a risk model and return (calibrated_model, best_threshold, best_f1).
     """
@@ -45,14 +47,42 @@ def calibrate_model(
 
     thresholds = np.linspace(0.05, 0.95, 19)
     best_t, best_f1 = 0.5, -1.0
+    best_metric = -1.0
+    best_f1_t = 0.5
+
     for t in thresholds:
         pred = (p_va >= t).astype(int)
         f1 = f1_score(y_valid, pred)
         if f1 > best_f1:
             best_f1 = f1
+            best_f1_t = float(t)
+
+        if threshold_strategy == "precision_at_recall":
+            tp = ((pred == 1) & (y_valid == 1)).sum()
+            fp = ((pred == 1) & (y_valid == 0)).sum()
+            fn = ((pred == 0) & (y_valid == 1)).sum()
+            precision = tp / max(tp + fp, 1)
+            recall = tp / max(tp + fn, 1)
+            metric = precision if recall >= target_value else -1.0
+        elif threshold_strategy == "recall_at_precision":
+            tp = ((pred == 1) & (y_valid == 1)).sum()
+            fp = ((pred == 1) & (y_valid == 0)).sum()
+            fn = ((pred == 0) & (y_valid == 1)).sum()
+            precision = tp / max(tp + fp, 1)
+            recall = tp / max(tp + fn, 1)
+            metric = recall if precision >= target_value else -1.0
+        else:
+            metric = f1
+
+        if metric > best_metric:
+            best_metric = metric
+            best_f1 = f1
             best_t = float(t)
 
-    return cal, best_t, float(best_f1)
+    if threshold_strategy != "max_f1" and best_metric < 0:
+        best_t = best_f1_t
+
+    return cal, best_t, float(best_f1), float(best_metric)
 
 
 def main() -> None:
@@ -70,7 +100,7 @@ def main() -> None:
 
     base = joblib.load(root / "models" / "risk_model.joblib")
 
-    cal, best_t, best_f1 = calibrate_model(
+    cal, best_t, best_f1, best_metric = calibrate_model(
         risk_model=base,
         X_train=X_tr,
         y_train=y_tr,
@@ -93,6 +123,7 @@ def main() -> None:
     rep = {
         "best_threshold": best_t,
         "best_f1_valid": float(best_f1),
+        "best_selection_metric": float(best_metric),
     }
     (root / "reports" / "calibration.json").write_text(json.dumps(rep, indent=2), encoding="utf-8")
 

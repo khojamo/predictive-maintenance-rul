@@ -32,6 +32,7 @@ def ensure_labels(
     *,
     horizon: int,
     failure_cycle_col: str = "failure_cycle",
+    allow_max_cycle: bool = False,
 ) -> pd.DataFrame:
     """
     Ensure both RUL and fail-within-h labels exist.
@@ -46,8 +47,12 @@ def ensure_labels(
     if "rul" not in out.columns:
         if failure_cycle_col in out.columns:
             out["rul"] = (out[failure_cycle_col] - out["cycle"]).clip(lower=0).astype(int)
-        else:
+        elif allow_max_cycle:
             out = add_rul_label(out)
+        else:
+            raise ValueError(
+                "Missing RUL labels. Provide 'rul' or 'failure_cycle', or enable run-to-failure labeling."
+            )
 
     if "fail_within_h" not in out.columns:
         out = add_failure_within_h_label(out, horizon=horizon)

@@ -31,6 +31,9 @@ class BaselineSpec:
     created_at_utc: str
     dataset: str
     bins: int
+    latest_only: bool
+    id_col: str
+    time_col: str
     feature_bins: dict[str, list[float]]
 
 
@@ -50,6 +53,9 @@ def load_baseline_bins() -> BaselineSpec:
         created_at_utc=str(obj["created_at_utc"]),
         dataset=str(obj.get("dataset", "FD001")),
         bins=int(obj.get("bins", 10)),
+        latest_only=bool(obj.get("latest_only", True)),
+        id_col=str(obj.get("id_col", "unit_id")),
+        time_col=str(obj.get("time_col", "cycle")),
         feature_bins={k: [float(x) for x in v] for k, v in obj["feature_bins"].items()},
     )
 
@@ -121,25 +127,34 @@ def compute_drift(
         id_col = feature_cfg.id_col
         time_col = feature_cfg.time_col
         signal_cols = feature_cfg.signal_cols
+        categorical_cols = feature_cfg.categorical_cols
+        categorical_levels = feature_cfg.categorical_levels
     else:
         id_col = "unit_id"
         time_col = "cycle"
         signal_cols = None
+        categorical_cols = []
+        categorical_levels = {}
 
-    # Build features, align to scoring behavior (latest cycle per unit)
+    # Build features, align to scoring behavior
     feat = build_rolling_features(
         raw_rows,
         window=window,
         min_periods=min_periods,
         signal_cols=signal_cols,
+        categorical_cols=categorical_cols,
+        categorical_levels=categorical_levels,
         id_col=id_col,
         time_col=time_col,
     )
-    latest = (
-        feat.sort_values([id_col, time_col])
-        .groupby(id_col, as_index=False)
-        .tail(1)
-    )
+    if baseline.latest_only:
+        latest = (
+            feat.sort_values([id_col, time_col])
+            .groupby(id_col, as_index=False)
+            .tail(1)
+        )
+    else:
+        latest = feat
 
     drift_rows: list[dict[str, Any]] = []
 

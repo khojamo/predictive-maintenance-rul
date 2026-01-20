@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class PredictRequest(BaseModel):
-    rows: list[dict[str, float | int]]
+    rows: list[dict[str, float | int | str]]
     window: int | None = Field(None, description="Override rolling window (optional)")
     min_periods: int | None = Field(None, description="Override rolling min_periods (optional)")
     all_cycles: bool = Field(False, description="If true, score every cycle (not just latest).")

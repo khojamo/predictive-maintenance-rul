@@ -46,6 +46,9 @@ def main() -> None:
         bins=bins,
         window=window,
         min_periods=minp,
+        latest_only=True,
+        id_col="unit_id",
+        time_col="cycle",
         feature_bins=feature_bins,
         feature_stats=feature_stats,
     )

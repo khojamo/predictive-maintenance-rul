@@ -60,6 +60,9 @@ def save_baseline(
     bins: int,
     window: int,
     min_periods: int,
+    latest_only: bool,
+    id_col: str,
+    time_col: str,
     feature_bins: dict[str, list[float]],
     feature_stats: dict[str, dict[str, float]],
 ) -> tuple[Path, Path]:
@@ -71,6 +74,9 @@ def save_baseline(
         "bins": bins,
         "window": window,
         "min_periods": min_periods,
+        "latest_only": bool(latest_only),
+        "id_col": id_col,
+        "time_col": time_col,
         "feature_bins": feature_bins,
     }
 

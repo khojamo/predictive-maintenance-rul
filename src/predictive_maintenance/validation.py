@@ -60,6 +60,7 @@ def validate_timeseries(
     id_col: str,
     time_col: str,
     feature_cols: list[str],
+    categorical_cols: list[str] | None = None,
 ):
     """Lightweight validation for custom time-series datasets."""
     missing = [c for c in [id_col, time_col, *feature_cols] if c not in df.columns]
@@ -72,10 +73,23 @@ def validate_timeseries(
     if out[time_col].isna().any():
         raise ValueError(f"Time column '{time_col}' contains non-numeric values.")
 
-    for col in feature_cols:
+    categorical_cols = categorical_cols or []
+    numeric_cols = [c for c in feature_cols if c not in set(categorical_cols)]
+
+    for col in numeric_cols:
         out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    for col in categorical_cols:
+        if out[col].isna().any():
+            raise ValueError(f"Categorical feature '{col}' contains missing values.")
+        out[col] = out[col].astype(str)
 
     if out[[id_col, time_col]].isna().any().any():
         raise ValueError("Found missing values in id/time columns after coercion.")
+
+    if out[numeric_cols].isna().any().any():
+        bad = out[numeric_cols].isna().sum()
+        missing = [c for c, n in bad.items() if n > 0]
+        raise ValueError(f"Found missing values in feature columns after coercion: {missing}")
 
     return out

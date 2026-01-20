@@ -11,6 +11,8 @@ def build_rolling_features(
     window: int,
     min_periods: int = 1,
     signal_cols: list[str] | None = None,
+    categorical_cols: list[str] | None = None,
+    categorical_levels: dict[str, list[str]] | None = None,
     id_col: str = "unit_id",
     time_col: str = "cycle",
 ) -> pd.DataFrame:
@@ -33,6 +35,8 @@ def build_rolling_features(
 
     if signal_cols is None:
         signal_cols = OP_COLS + SENSOR_COLS
+    if categorical_cols is None:
+        categorical_cols = []
 
     # Ensure correct order (important for rolling windows)
     out = df.sort_values([id_col, time_col]).copy()
@@ -44,8 +48,11 @@ def build_rolling_features(
     g = out.groupby(id_col, group_keys=False)
 
     feats = []
-    # Rolling stats + current value for each signal
-    for col in signal_cols:
+    numeric_cols = [c for c in signal_cols if c not in set(categorical_cols)]
+    cat_cols = [c for c in categorical_cols if c in signal_cols]
+
+    # Rolling stats + current value for each numeric signal
+    for col in numeric_cols:
         r = g[col].rolling(window=window, min_periods=min_periods)
 
         feats.append(r.mean().reset_index(level=0, drop=True).rename(f"{col}_roll{window}_mean"))
@@ -53,6 +60,10 @@ def build_rolling_features(
         feats.append(r.min().reset_index(level=0, drop=True).rename(f"{col}_roll{window}_min"))
         feats.append(r.max().reset_index(level=0, drop=True).rename(f"{col}_roll{window}_max"))
 
+        feats.append(out[col].rename(f"{col}_last"))
+
+    # Categorical signals: only keep current value
+    for col in cat_cols:
         feats.append(out[col].rename(f"{col}_last"))
 
     feat_df = pd.concat(feats, axis=1)
@@ -66,7 +77,7 @@ def build_rolling_features(
     # We impute using only current info:
     # - roll mean/min/max -> current value (*_last)
     # - roll std          -> 0.0
-    for col in signal_cols:
+    for col in numeric_cols:
         last = f"{col}_last"
 
         mean_c = f"{col}_roll{window}_mean"
@@ -82,6 +93,24 @@ def build_rolling_features(
             feat_df[max_c] = feat_df[max_c].fillna(feat_df[last])
         if std_c in feat_df.columns:
             feat_df[std_c] = feat_df[std_c].fillna(0.0)
+
+    # One-hot encode categorical last values if provided
+    if cat_cols:
+        cat_frames = []
+        for col in cat_cols:
+            last = f"{col}_last"
+            levels = None
+            if categorical_levels and col in categorical_levels:
+                levels = categorical_levels[col]
+            cat_series = feat_df[last].astype(str)
+            if levels is not None:
+                cat_series = pd.Categorical(cat_series, categories=[str(v) for v in levels])
+            dummies = pd.get_dummies(cat_series, prefix=col)
+            cat_frames.append(dummies)
+            feat_df = feat_df.drop(columns=[last])
+
+        if cat_frames:
+            feat_df = pd.concat([feat_df] + cat_frames, axis=1)
 
     # Final hard check: no NaNs
     if feat_df.isna().any().any():

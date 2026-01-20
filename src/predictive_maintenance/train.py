@@ -6,7 +6,9 @@ import json
 import yaml
 
 import pandas as pd
+import numpy as np
 from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
@@ -72,16 +74,36 @@ def make_training_table_from_df(
     cfg: dict,
     *,
     signal_cols: list[str],
+    categorical_cols: list[str] | None = None,
+    allow_max_cycle: bool = False,
 ) -> pd.DataFrame:
     H = int(cfg["risk_horizon"])
     window = int(cfg["features"]["window"])
     minp = int(cfg["features"]["min_periods"])
     sp = cfg["split"]
 
-    df = ensure_labels(df, horizon=H)
-    df = validate_timeseries(df, id_col="unit_id", time_col="cycle", feature_cols=signal_cols)
+    df = ensure_labels(df, horizon=H, allow_max_cycle=allow_max_cycle)
+    df = validate_timeseries(
+        df,
+        id_col="unit_id",
+        time_col="cycle",
+        feature_cols=signal_cols,
+        categorical_cols=categorical_cols,
+    )
 
-    X = build_rolling_features(df, window=window, min_periods=minp, signal_cols=signal_cols)
+    categorical_cols = categorical_cols or []
+    categorical_levels = {
+        col: sorted(df[col].astype(str).unique().tolist()) for col in categorical_cols if col in df.columns
+    }
+
+    X = build_rolling_features(
+        df,
+        window=window,
+        min_periods=minp,
+        signal_cols=signal_cols,
+        categorical_cols=categorical_cols,
+        categorical_levels=categorical_levels,
+    )
     y = df[["unit_id", "cycle", "rul", "fail_within_h"]]
     table = X.merge(y, on=["unit_id", "cycle"], how="inner")
 
@@ -172,8 +194,16 @@ def train_and_eval_from_df(
     cfg: dict,
     *,
     signal_cols: list[str],
+    categorical_cols: list[str] | None = None,
+    allow_max_cycle: bool = False,
 ) -> tuple[dict, Pipeline, Pipeline, list[str]]:
-    table = make_training_table_from_df(df, cfg, signal_cols=signal_cols)
+    table = make_training_table_from_df(
+        df,
+        cfg,
+        signal_cols=signal_cols,
+        categorical_cols=categorical_cols,
+        allow_max_cycle=allow_max_cycle,
+    )
 
     feature_cols = [c for c in table.columns if c not in {"unit_id", "cycle", "rul", "fail_within_h", "split"}]
 
@@ -241,6 +271,8 @@ def train_and_eval_from_df(
 
 def train_models_from_table(
     table: pd.DataFrame,
+    *,
+    cv_folds: int | None = None,
 ) -> tuple[
     dict,
     Pipeline,
@@ -306,6 +338,65 @@ def train_models_from_table(
         },
     }
 
+    if cv_folds and cv_folds >= 2:
+        groups = tr["unit_id"].to_numpy()
+        gkf = GroupKFold(n_splits=int(cv_folds))
+
+        cv_cls = []
+        cv_reg = []
+        for tr_idx, va_idx in gkf.split(X_tr, y_tr_cls, groups):
+            X_tr_cv = X_tr.iloc[tr_idx]
+            X_va_cv = X_tr.iloc[va_idx]
+            y_tr_cv = y_tr_cls.iloc[tr_idx]
+            y_va_cv = y_tr_cls.iloc[va_idx]
+            y_tr_reg_cv = y_tr_reg.iloc[tr_idx]
+            y_va_reg_cv = y_tr_reg.iloc[va_idx]
+
+            risk_cv = Pipeline(
+                steps=[
+                    ("scaler", StandardScaler()),
+                    ("clf", LogisticRegression(max_iter=500, class_weight="balanced")),
+                ]
+            )
+            risk_cv.fit(X_tr_cv, y_tr_cv)
+            proba_cv = risk_cv.predict_proba(X_va_cv)[:, 1]
+            pred_cv = (proba_cv >= 0.5).astype(int)
+            cv_cls.append(
+                {
+                    "roc_auc": float(roc_auc_score(y_va_cv, proba_cv)),
+                    "pr_auc": float(average_precision_score(y_va_cv, proba_cv)),
+                    "f1@0.5": float(f1_score(y_va_cv, pred_cv)),
+                }
+            )
+
+            rul_cv = Pipeline(
+                steps=[
+                    ("scaler", StandardScaler()),
+                    ("reg", Ridge(alpha=1.0)),
+                ]
+            )
+            rul_cv.fit(X_tr_cv, y_tr_reg_cv)
+            pred_rul = rul_cv.predict(X_va_cv)
+            cv_reg.append(
+                {
+                    "mae": float(mean_absolute_error(y_va_reg_cv, pred_rul)),
+                    "rmse": float(mean_squared_error(y_va_reg_cv, pred_rul, squared=False)),
+                }
+            )
+
+        metrics["cv"] = {
+            "folds": int(cv_folds),
+            "risk": {
+                "roc_auc": float(np.mean([m["roc_auc"] for m in cv_cls])),
+                "pr_auc": float(np.mean([m["pr_auc"] for m in cv_cls])),
+                "f1@0.5": float(np.mean([m["f1@0.5"] for m in cv_cls])),
+            },
+            "rul": {
+                "mae": float(np.mean([m["mae"] for m in cv_reg])),
+                "rmse": float(np.mean([m["rmse"] for m in cv_reg])),
+            },
+        }
+
     return metrics, risk_model, rul_model, feature_cols, (X_tr, y_tr_cls, X_va, y_va_cls)
 
 
@@ -313,6 +404,8 @@ def save_trained_artifacts(
     cfg: dict,
     *,
     signal_cols: list[str],
+    categorical_cols: list[str] | None = None,
+    categorical_levels: dict[str, list[str]] | None = None,
     risk_model: Pipeline,
     rul_model: Pipeline,
     metrics: dict,
@@ -352,6 +445,8 @@ def save_trained_artifacts(
         id_col="unit_id",
         time_col="cycle",
         signal_cols=signal_cols,
+        categorical_cols=categorical_cols or [],
+        categorical_levels=categorical_levels or {},
         window=int(cfg["features"]["window"]),
         min_periods=int(cfg["features"]["min_periods"]),
         risk_horizon=int(cfg.get("risk_horizon", 30)),
@@ -364,6 +459,7 @@ def build_and_save_baseline_from_table(
     *,
     cfg: dict,
     dataset_name: str,
+    latest_only: bool = True,
 ) -> None:
     fcfg = cfg["features"]
     window = int(fcfg["window"])
@@ -371,7 +467,10 @@ def build_and_save_baseline_from_table(
     bins = int(cfg.get("monitoring", {}).get("psi_bins", 10))
 
     train = table[table["split"] == "train"].copy()
-    latest = train.sort_values(["unit_id", "cycle"]).groupby("unit_id", as_index=False).tail(1)
+    if latest_only:
+        latest = train.sort_values(["unit_id", "cycle"]).groupby("unit_id", as_index=False).tail(1)
+    else:
+        latest = train
 
     feature_bins, feature_stats = build_baseline_bins(
         latest,
@@ -385,6 +484,9 @@ def build_and_save_baseline_from_table(
         bins=bins,
         window=window,
         min_periods=minp,
+        latest_only=latest_only,
+        id_col="unit_id",
+        time_col="cycle",
         feature_bins=feature_bins,
         feature_stats=feature_stats,
     )

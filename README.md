@@ -24,8 +24,9 @@ python run.py ui
 
 1) Open the UI and upload your dataset (CSV or Excel).  
 2) Map your columns to the canonical feature names.  
-3) Train and evaluate. Artifacts are saved to `models/` and `reports/`.  
-4) Score new data and run drift checks from the UI.
+3) Provide labels (`rul` or `failure_cycle`), or explicitly enable run-to-failure labeling.  
+4) Train and evaluate. Artifacts are saved to `models/` and `reports/`.  
+5) Score new data and run drift checks from the UI.
 
 ## Synthetic data generator
 

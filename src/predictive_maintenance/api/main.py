@@ -59,7 +59,10 @@ def health() -> dict:
 def predict(req: PredictRequest) -> list[PredictResponse]:
     request_id = str(uuid4())
 
-    outputs = predict_one(req)  # MUST return list[PredictResponse]
+    try:
+        outputs = predict_one(req)  # MUST return list[PredictResponse]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     # Best-effort logging: NEVER break predictions
     try:
@@ -81,7 +84,10 @@ def predict(req: PredictRequest) -> list[PredictResponse]:
 def batch_predict(req: BatchPredictRequest) -> BatchPredictResponse:
     request_id = str(uuid4())
 
-    resp = predict_many(req)  # returns BatchPredictResponse(outputs=[...])
+    try:
+        resp = predict_many(req)  # returns BatchPredictResponse(outputs=[...])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         raw_rows = list(req.rows)
@@ -120,5 +126,7 @@ def drift(req: DriftRequest) -> DriftResponse:
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     return DriftResponse(**result)
